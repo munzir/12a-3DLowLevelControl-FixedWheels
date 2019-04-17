@@ -38,7 +38,7 @@
 #include "Controller.hpp"
 
 /// \brief class MyWindow
-class MyWindow : public dart::gui::SimWindow
+class MyWindow : public dart::gui::glut::SimWindow
 {
 public:
   /// \brief Default constructor
@@ -65,6 +65,15 @@ private:
 
   /// \brief True to make the end effect to track a circle path
   bool mCircleTask;
+
+  Eigen::Vector3d mLeftTargetPosition;
+  Eigen::Vector3d mRightTargetPosition;
+  Eigen::Vector3d mLeftTargetRPY;
+  Eigen::Vector3d mRightTargetRPY;
+  Eigen::MatrixXd th_traj;
+  int mSteps;
+  bool mStart;
+  double mthOffset;
 };
 
 #endif  // EXAMPLES_OPERATIONALSPACECONTROL_MYWINDOW_HPP_

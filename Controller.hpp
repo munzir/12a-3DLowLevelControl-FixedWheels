@@ -33,33 +33,40 @@
 #define EXAMPLES_OPERATIONALSPACECONTROL_CONTROLLER_HPP_
 
 #include <Eigen/Eigen>
-#include <string>
 #include <dart/dart.hpp>
+#include <string>
 
 /// \brief Operational space controller for 6-dof manipulator
 class Controller {
-public:
+ public:
   /// \brief Constructor
-  Controller( dart::dynamics::SkeletonPtr _robot,
-              dart::dynamics::BodyNode* _LeftendEffector,
-              dart::dynamics::BodyNode* _RightendEffector);
+  Controller(dart::dynamics::SkeletonPtr _robot,
+             dart::dynamics::BodyNode* _LeftendEffector,
+             dart::dynamics::BodyNode* _RightendEffector);
 
   /// \brief Destructor
   virtual ~Controller();
 
   /// \brief
-  void update(const Eigen::Vector3d& _targetPosition);
+  void update(const Eigen::Vector3d& _LeftTargetPosition,
+              const Eigen::Vector3d& _RightTargetPosition,
+              const Eigen::Vector3d& _LeftTargetRPY,
+              const Eigen::Vector3d& _RightTargetRPY, double thref,
+              double dthref, double ddthref);
 
   /// \brief Get robot
   dart::dynamics::SkeletonPtr getRobot() const;
 
   /// \brief Get end effector of the robot
-  dart::dynamics::BodyNode* getEndEffector(const std::string &s) const;
+  dart::dynamics::BodyNode* getEndEffector(const std::string& s) const;
 
   /// \brief Keyboard control
   virtual void keyboard(unsigned char _key, int _x, int _y);
 
-private:
+  void setRightOrientationOptParams(const Eigen::Vector3d& _RightTargetRPY);
+  void setLeftOrientationOptParams(const Eigen::Vector3d& _LeftTargetRPY);
+  void setBalanceOptParams(double thref, double dthref, double ddthref);
+ public:
   /// \brief Robot
   dart::dynamics::SkeletonPtr mRobot;
 
@@ -77,6 +84,24 @@ private:
 
   /// \brief Derivative gain for the virtual spring forces at the end effector
   Eigen::Matrix3d mKv;
+
+  Eigen::MatrixXd mPOrL, mPOrR;
+  Eigen::VectorXd mbOrL, mbOrR;
+  double mWOrL, mWOrR;
+  double mKpOr, mKvOr;
+  Eigen::VectorXd mdqBody;
+
+  bool mInverseKinematicsOnArms, mCOMAngleControl, mMaintainInitCOMDistance,
+       mCOMPDControl;
+  double mInitCOMDistance;
+  double mKpCOM, mKvCOM;
+  Eigen::MatrixXd mWBal, mPBal;
+  Eigen::VectorXd mbBal;
+  int mSteps;
+  std::ofstream th_log;
+  bool mWaistLocked;
+  int mOptDim;
+  Eigen::VectorXd mddqBodyRef;
 };
 
 #endif  // EXAMPLES_OPERATIONALSPACECONTROL_CONTROLLER_HPP_
