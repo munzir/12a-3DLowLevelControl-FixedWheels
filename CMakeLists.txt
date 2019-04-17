@@ -11,4 +11,9 @@ include_directories(${DART_INCLUDE_DIRS})
 file(GLOB srcs "*.cpp" "*.hpp")
 add_executable(${PROJECT_NAME} ${srcs})
 
-target_link_libraries(${PROJECT_NAME} ${DART_LIBRARIES} nlopt)
+target_link_libraries(${PROJECT_NAME} ${DART_LIBRARIES} nlopt config4cpp)
+
+if(NOT EXISTS "/usr/local/share/krang/fixed_wheels/cfg")
+  install(FILES params.cfg DESTINATION /usr/local/share/krang/fixed_wheels/cfg)
+endif()
+
