@@ -102,6 +102,8 @@ class Controller {
   bool mWaistLocked;
   int mOptDim;
   Eigen::VectorXd mddqBodyRef;
+  Eigen::MatrixXd mMM;
+  Eigen::VectorXd mhh;
 };
 
 #endif  // EXAMPLES_OPERATIONALSPACECONTROL_CONTROLLER_HPP_

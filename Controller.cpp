@@ -48,7 +48,6 @@ Controller::Controller(dart::dynamics::SkeletonPtr _robot,
   int dof = mRobot->getNumDofs();
   std::cout << "[controller] DoF: " << dof << std::endl;
 
-  mForces.setZero(dof);
   mKp.setZero();
   mKv.setZero();
 
@@ -101,8 +100,14 @@ Controller::Controller(dart::dynamics::SkeletonPtr _robot,
   mSteps = 0;
   th_log = std::ofstream("/usr/local/share/krang/fixed_wheels/th_log");
   mWaistLocked = true;
+  if (mWaistLocked)
+    mRobot->getJoint("JWaist")->setActuatorType(
+        dart::dynamics::Joint::ActuatorType::LOCKED);
   mOptDim = (mWaistLocked ? numBodyLinks - 1 : numBodyLinks);
   mddqBodyRef = Eigen::VectorXd::Zero(mOptDim);
+  mMM = Eigen::MatrixXd::Zero(mOptDim, mOptDim);
+  mhh = Eigen::VectorXd::Zero(mOptDim);
+  mForces = Eigen::VectorXd::Zero(mOptDim);
 }
 
 //=========================================================================
@@ -128,10 +133,12 @@ void printMatrix(Eigen::MatrixXd A) {
 double optFunc(const std::vector<double>& x, std::vector<double>& grad,
                void* my_func_data) {
   OptParams* optParams = reinterpret_cast<OptParams*>(my_func_data);
-  Eigen::Matrix<double, 18, 1> X(x.data());
+  size_t n = x.size();
+  Eigen::VectorXd X = Eigen::VectorXd::Zero(n);
+  for (int i = 0; i < n; i++) X(i) = x[i];
 
   if (!grad.empty()) {
-    Eigen::Matrix<double, 18, 1> mGrad =
+    Eigen::MatrixXd mGrad =
         optParams->P.transpose() * (optParams->P * X - optParams->b);
     Eigen::VectorXd::Map(&grad[0], mGrad.size()) = mGrad;
   }
@@ -459,8 +466,8 @@ void Controller::setBalanceOptParams(double thref, double dthref,
 
   th = atan2(COM(x0), COM(z0));
   dth = (cos(th) / COM(z0)) * (cos(th) * dCOM(x0) - sin(th) * dCOM(z0));
-  th_log << mSteps * 0.001 << " " << -thref << " " << -th << " " << -dthref << " "
-         << -dth << std::endl;
+  th_log << mSteps * 0.001 << " " << -thref << " " << -th << " " << -dthref
+         << " " << -dth << std::endl;
 }
 
 //=========================================================================
@@ -544,28 +551,43 @@ void Controller::update(const Eigen::Vector3d& _LeftTargetPosition,
   OptParams optParams;
   Eigen::MatrixXd NewP(PRight.rows() + PLeft.rows() + PRegulator.rows() +
                            mPBal.rows() + mPOrL.rows() + mPOrR.rows(),
-                       PRight.cols());
-  NewP << PRight, PLeft, PRegulator, mPBal, mPOrL, mPOrR;
+                       mOptDim);
+  // clang-format off
+  NewP << PRight.col(0), PRight.rightCols(mOptDim - 1),
+      PLeft.col(0), PLeft.rightCols(mOptDim - 1),
+      PRegulator.col(0), PRegulator.rightCols(mOptDim - 1),
+      mPBal.col(0), mPBal.rightCols(mOptDim - 1),
+      mPOrL.col(0), mPOrL.rightCols(mOptDim - 1),
+      mPOrR.col(0), mPOrR.rightCols(mOptDim - 1);
+  // clang-format on
   Eigen::VectorXd NewB(bRight.rows() + bLeft.rows() + bRegulator.rows() +
                            mbBal.rows() + mbOrL.rows() + mbOrR.rows(),
                        bRight.cols());
   NewB << bRight, bLeft, bRegulator, mbBal, mbOrL, mbOrR;
   optParams.P = NewP;
   optParams.b = NewB;
-  nlopt::opt opt(nlopt::LD_MMA, dof);
-  std::vector<double> ddq_vec(dof);
+  nlopt::opt opt(nlopt::LD_SLSQP, mOptDim);
+  std::vector<double> ddq_vec(mOptDim);
+  Eigen::VectorXd::Map(&ddq_vec[0], mddqBodyRef.size()) = mddqBodyRef;
   double minf;
   opt.set_min_objective(optFunc, &optParams);
   opt.set_xtol_rel(1e-4);
   opt.set_maxtime(0.005);
   opt.optimize(ddq_vec, minf);
-  Eigen::Matrix<double, 18, 1> ddq(ddq_vec.data());
+  for (int i = 0; i < mOptDim; i++) mddqBodyRef(i) = ddq_vec[i];
 
   // Torques
   Eigen::MatrixXd M = mRobot->getMassMatrix();                 // n x n
   Eigen::VectorXd Cg = mRobot->getCoriolisAndGravityForces();  // n x 1
-  mForces = M * ddq + Cg;
-  mRobot->setForces(mForces);
+  mMM << M(0, 0), M.topRightCorner(1, mOptDim - 1),
+      M.bottomLeftCorner(mOptDim - 1, 1),
+      M.bottomRightCorner(mOptDim - 1, mOptDim - 1);
+  mhh << Cg(0), Cg.tail(mOptDim - 1);
+  mForces = mMM * mddqBodyRef + mhh;
+  Eigen::VectorXd forces = Eigen::VectorXd::Zero(dof);
+  forces(0) = mForces(0);
+  forces.tail(mOptDim -1) = mForces.tail(mOptDim - 1);
+  mRobot->setForces(forces);
 }
 
 //=========================================================================
